@@ -153,18 +153,88 @@ async def TryToParse(TESTorREAL):
             title = await tab.execute_script("document.title")
             print(title)
 
-            await clickIFclickable('textbox81212912', 2)
+            # 먼저 로그인 상태 확인
+            already_logged_in = False
+            try:
+                logout_btn = await tab.find(tag_name='a', title='로그아웃', timeout=3)
+                if logout_btn:
+                    print("이미 로그인된 상태입니다.")
+                    already_logged_in = True
+            except Exception:
+                pass
+            
+            if not already_logged_in:
+                # 로그인 버튼 찾아서 클릭 (여러 방법으로 시도)
+                login_success = False
+                try:
+                    # 방법 1: title 속성으로 찾기
+                    login_btn = await tab.find(tag_name='a', title='로그인', timeout=5)
+                    await login_btn.click()
+                    print("로그인 버튼 클릭 완료 (title 속성)")
+                    login_success = True
+                except Exception:
+                    try:
+                        # 방법 2: 텍스트로 찾기
+                        login_links = await tab.find_all(tag_name='a', timeout=3)
+                        for link in login_links:
+                            link_text = await link.text
+                            if '로그인' in link_text:
+                                await link.click()
+                                print(f"로그인 버튼 클릭 완료 (텍스트: {link_text})")
+                                login_success = True
+                                break
+                    except Exception:
+                        print("로그인 버튼을 찾을 수 없습니다.")
+                        login_success = False
+            
+            if login_success:
+                await asyncio.sleep(2)
+                
+                # 아이디 로그인 버튼 클릭
+                try:
+                    id_login_btn = await tab.find(tag_name='a', title='아이디 로그인', timeout=10)
+                    await id_login_btn.click()
+                    print("아이디 로그인 버튼 클릭 완료")
+                    await asyncio.sleep(2)
+                    
+                    # 아이디 입력
+                    id_input = await tab.find(tag_name='input', title='아이디 입력', timeout=10)
+                    await id_input.type_text('tangibleidea')
+                    print("아이디 입력 완료")
+                    
+                    # 비밀번호 입력
+                    pw_input = await tab.find(tag_name='input', title='비밀번호 입력', timeout=10)
+                    await pw_input.type_text('f3bab@6845')
+                    print("비밀번호 입력 완료")
+                    
+                    # 로그인 버튼 클릭 (실제 로그인 실행)
+                    try:
+                        # 로그인 버튼을 찾아서 클릭
+                        final_login_btn = await tab.find(tag_name='button', timeout=5)
+                        # 또는 submit 타입의 input 찾기
+                        if not final_login_btn:
+                            final_login_btn = await tab.find(tag_name='input', type='submit', timeout=5)
+                        
+                        await final_login_btn.click()
+                        print("로그인 실행 완료")
+                        await asyncio.sleep(3)
+                    except Exception as e:
+                        print(f"로그인 버튼 클릭 실패: {e}")
+                        
+                except Exception as e:
+                    print(f"로그인 과정 중 오류: {e}")
+
+            # 로그인 완료 확인 (로그아웃 버튼이 나타날 때까지 대기)
             while True:
                 try:
-                    btn_new = await tab.find(id='textbox81212912')
-                    btn_text = await btn_new.text
-                    if btn_text == "로그아웃":
+                    # 로그아웃 버튼을 찾아서 로그인 상태 확인
+                    logout_btn = await tab.find(tag_name='a', title='로그아웃', timeout=2)
+                    if logout_btn:
                         print("로그인됨.")
                         break
-                    await asyncio.sleep(1)
                 except Exception as e:
                     print("홈택스 로그인 해주세요.")
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)
             
             await tab.go_to("https://hometax.go.kr/websquare/websquare.wq?w2xPath=/ui/pp/index_pp.xml&tmIdx=1&tm2lIdx=0105040000&tm3lIdx=0105040400")
 
