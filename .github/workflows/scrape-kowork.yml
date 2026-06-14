@@ -1,0 +1,29 @@
+name: Scrape Kowork
+
+on:
+  schedule:
+    - cron: '0 11 * * *'  # 매일 20:00 KST (11:00 UTC)
+  workflow_dispatch:      # 수동 실행 가능
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kowork.kr
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml supabase python-dotenv
+
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
+        run: python scraper.py
