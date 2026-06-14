@@ -1,0 +1,27 @@
+name: Scrape Jasoseol Jobs
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 매일 18:00 KST (09:00 UTC)
+  workflow_dispatch:      # 수동 실행 가능
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: ${{ github.workspace }}
+        run: pip install requests beautifulsoup4 lxml supabase python-dotenv
+
+      - name: Run scraper
+        working-directory: ${{ github.workspace }}
+        env:
+          SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
+        run: python scraper.py

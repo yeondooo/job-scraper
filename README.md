@@ -18,6 +18,8 @@ Dependency : BeautifulSoup4, lxml, Selenium
 Dependency : BeautifulSoup4, lxml
 * hometax.go.kr
 Dependency : selenium, PyInquirer
+* peoplenjob.com
+    Dependency : requests, BeautifulSoup4, lxml, python-dotenv, supabase
 
 IMDB.com project
 ------------
