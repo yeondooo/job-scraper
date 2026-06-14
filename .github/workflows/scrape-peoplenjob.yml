@@ -3,7 +3,12 @@ name: Scrape PeopleNJob
 on:
   schedule:
     - cron: '0 10 * * *'  # 매일 19:00 KST (10:00 UTC)
-  workflow_dispatch:      # 수동 실행 가능
+  workflow_dispatch:      # 수동 실행 및 입력 지원
+    inputs:
+      max_pages:
+        description: '수집할 최대 페이지 수 (기본 50페이지)'
+        required: true
+        default: '50'
 
 jobs:
   scrape:
@@ -26,4 +31,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
-        run: python scraper.py --max-pages 10
+        run: python scraper.py --max-pages ${{ github.event.inputs.max_pages || '10' }}

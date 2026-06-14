@@ -3,7 +3,12 @@ name: Scrape Kowork
 on:
   schedule:
     - cron: '0 11 * * *'  # 매일 20:00 KST (11:00 UTC)
-  workflow_dispatch:      # 수동 실행 가능
+  workflow_dispatch:      # 수동 실행 및 입력 지원
+    inputs:
+      limit:
+        description: '수집할 최대 공고 개수 (기본 15개)'
+        required: true
+        default: '15'
 
 jobs:
   scrape:
@@ -26,4 +31,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
-        run: python scraper.py
+        run: python scraper.py --limit ${{ github.event.inputs.limit || '15' }}
