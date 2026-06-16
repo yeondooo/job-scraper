@@ -6,9 +6,13 @@ on:
   workflow_dispatch:      # 수동 실행 및 입력 지원
     inputs:
       limit:
-        description: '수집할 최대 공고 개수 (기본 15개)'
+        description: '수집할 최대 공고 개수 (기본 100개)'
         required: true
-        default: '15'
+        default: '100'
+      use_sitemap:
+        description: '사이트맵 모드 사용 (true/false, 기본 true)'
+        required: true
+        default: 'true'
 
 jobs:
   scrape:
@@ -31,4 +35,9 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
-        run: python scraper.py --limit ${{ github.event.inputs.limit || '15' }}
+        run: |
+          if [ "${{ github.event.inputs.use_sitemap || 'true' }}" = "true" ]; then
+            python scraper.py --sitemap --limit ${{ github.event.inputs.limit || '100' }}
+          else
+            python scraper.py --limit ${{ github.event.inputs.limit || '15' }}
+          fi
