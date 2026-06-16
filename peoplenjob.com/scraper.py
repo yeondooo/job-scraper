@@ -191,8 +191,8 @@ def save_to_supabase(rows: list[dict]):
         return
     for attempt in range(3):
         try:
-            supabase.table("peoplenjob_listings").upsert(
-                rows, on_conflict="job_id"
+            supabase.table("unified_job_listings").upsert(
+                rows, on_conflict="source,source_job_id"
             ).execute()
             print(f"  💾 Supabase 저장 완료: {len(rows)}건")
             return
@@ -266,7 +266,8 @@ def scrape_all(args):
     rows = []
     for job in all_jobs:
         row = {
-            "job_id": job["job_id"],
+            "source": "peoplenjob",
+            "source_job_id": job["job_id"],
             "url": job["url"],
             "title": job["title"],
             "company_name": job.get("company_name"),

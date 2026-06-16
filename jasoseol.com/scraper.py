@@ -88,10 +88,11 @@ def to_db_row(job: dict, scraped_at: str) -> dict:
     company_type = BUSINESS_TYPE_MAP.get(business_type) if business_type else None
 
     return {
-        "recruit_id": str(job["id"]),
+        "source": "jasoseol",
+        "source_job_id": str(job["id"]),
         "url": f"{BASE_URL}/recruit/{job['id']}",
         "company_name": job.get("name"),
-        "job_title": job.get("title"),
+        "title": job.get("title"),
         "company_type": company_type,
         "employment_type": employment_type,
         "start_date": job.get("start_time"),
@@ -106,7 +107,7 @@ def save_to_supabase(rows: list[dict]):
         return
     for attempt in range(3):
         try:
-            supabase.table("job_listings").upsert(rows, on_conflict="recruit_id").execute()
+            supabase.table("unified_job_listings").upsert(rows, on_conflict="source,source_job_id").execute()
             print(f"  저장 완료: {len(rows)}건")
             return
         except Exception as e:

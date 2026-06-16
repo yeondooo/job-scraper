@@ -7,7 +7,10 @@ import argparse
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
+
+from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -42,6 +45,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 BASE_URL = "https://kowork.kr"
+SITEMAP_URL = f"{BASE_URL}/server-sitemap.xml"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -51,7 +55,7 @@ HEADERS = {
 }
 
 
-def fetch_page(url: str, delay: float = 1.0) -> str | None:
+def fetch_page(url: str, delay: float = 1.0) -> Optional[str]:
     """URL에서 HTML을 가져옵니다. 최대 3회 재시도합니다."""
     for attempt in range(3):
         try:
@@ -67,6 +71,33 @@ def fetch_page(url: str, delay: float = 1.0) -> str | None:
             print(f"  요청 오류 — 재시도 {attempt + 1}/3: {e}")
             time.sleep(3 * (attempt + 1))
     return None
+
+
+def fetch_sitemap_job_ids() -> list[str]:
+    """server-sitemap.xml에서 전체 채용 공고 ID 목록을 가져옵니다."""
+    print(f"🗺️ 사이트맵 로딩 중: {SITEMAP_URL}")
+    xml_text = fetch_page(SITEMAP_URL, delay=0.5)
+    if not xml_text:
+        print("❌ 사이트맵 로드 실패")
+        return []
+
+    # XML namespace 처리
+    root = ET.fromstring(xml_text)
+    ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+    job_ids = set()
+    for url_el in root.findall("sm:url", ns):
+        loc = url_el.find("sm:loc", ns)
+        if loc is not None and loc.text:
+            # https://kowork.kr/post/6510 형태에서 ID 추출
+            # /en/post/6510 같은 다국어 URL은 제외 (한국어 기본 URL만)
+            match = re.search(r"kowork\.kr/post/(\d+)$", loc.text)
+            if match:
+                job_ids.add(match.group(1))
+
+    sorted_ids = sorted(job_ids, key=int, reverse=True)  # 최신순 정렬
+    print(f"  🔍 사이트맵에서 고유 공고 {len(sorted_ids)}건 발견")
+    return sorted_ids
 
 
 def parse_list_page(html: str) -> list[dict]:
@@ -139,9 +170,21 @@ def parse_list_page(html: str) -> list[dict]:
 
 
 def parse_detail_page(html: str) -> dict:
-    """채용 상세 페이지에서 주요 업무, 자격 요건, 우대 사항, 선호 비자, 복리 후생 등을 파싱합니다."""
+    """채용 상세 페이지에서 제목, 회사명, 주요 업무, 자격 요건, 우대 사항, 선호 비자, 복리 후생 등을 파싱합니다."""
     soup = BeautifulSoup(html, "html.parser")
     detail = {}
+
+    # 0. 제목 (og:title 또는 h1)
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content"):
+        detail["title"] = og_title["content"]
+
+    # 0-1. 회사명 (상세 페이지 내 회사 링크)
+    company_link = soup.find("a", href=re.compile(r"/company/"))
+    if company_link:
+        company_text = company_link.get_text(strip=True)
+        if company_text:
+            detail["company_name"] = company_text
 
     # 1. 주요 텍스트 섹션들 (flex flex-col gap-4) 파싱
     sections = soup.find_all("div", class_="flex flex-col gap-4")
@@ -192,6 +235,21 @@ def parse_detail_page(html: str) -> dict:
                     value = value.replace("주소 복사", "").strip()
                 detail["location_detail"] = value
 
+    # 3. 마감일
+    deadline_el = soup.find("p", string=re.compile(r"D-\d+|상시"))
+    if deadline_el:
+        detail["deadline"] = deadline_el.get_text(strip=True)
+
+    # 4. 비자 지원 태그
+    visa_pill = soup.find("p", class_=lambda c: c and "bg-[#FFF1F0]" in c)
+    if visa_pill:
+        detail["visa_type"] = visa_pill.get_text(strip=True)
+
+    # 5. 로고 이미지 (회사 로고)
+    logo_el = soup.select_one("img[alt*='logo'], img[alt*='회사']")
+    if logo_el:
+        detail["logo_url"] = logo_el.get("src")
+
     return detail
 
 
@@ -199,39 +257,35 @@ def save_to_supabase(rows: list[dict]):
     """Supabase에 upsert로 저장합니다."""
     if not rows:
         return
-    for attempt in range(3):
-        try:
-            supabase.table("kowork_listings").upsert(
-                rows, on_conflict="job_id"
-            ).execute()
-            print(f"  💾 Supabase 저장 완료: {len(rows)}건")
-            return
-        except Exception as e:
-            print(f"  저장 재시도 {attempt + 1}/3: {e}")
-            time.sleep(2)
+    # 배치 단위로 저장 (50건씩)
+    batch_size = 50
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        for attempt in range(3):
+            try:
+                supabase.table("unified_job_listings").upsert(
+                    batch, on_conflict="source,source_job_id"
+                ).execute()
+                print(f"  💾 Supabase 저장 완료: {len(batch)}건 (누적 {min(i + batch_size, len(rows))}/{len(rows)})")
+                break
+            except Exception as e:
+                print(f"  저장 재시도 {attempt + 1}/3: {e}")
+                time.sleep(2)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Kowork job scraper")
-    parser.add_argument("--limit", type=int, default=15, help="스크랩할 최대 공고 개수 (기본 15)")
-    args = parser.parse_args()
-
-    print(f"🚀 Kowork 스크래퍼 시작: {datetime.now().isoformat()}")
-    
-    # 메인 페이지 로드
+def scrape_from_main_page(limit: int):
+    """메인 페이지에서 공고 카드를 파싱하는 기존 방식 (최대 15건)"""
     html = fetch_page(BASE_URL)
     if not html:
         print("❌ 메인 페이지 로드 실패")
         return
 
-    # 공고 목록 파싱
     jobs = parse_list_page(html)
     if not jobs:
         print("❌ 파싱된 채용 공고가 없습니다.")
         return
 
-    # 필요한 개수만큼 슬라이싱
-    jobs = jobs[:args.limit]
+    jobs = jobs[:limit]
     final_jobs = []
 
     for idx, job in enumerate(jobs):
@@ -239,12 +293,11 @@ def main():
         detail_html = fetch_page(job["url"], delay=1.5)
         if detail_html:
             detail_info = parse_detail_page(detail_html)
-            # 수집된 정보 머지 (상세 페이지에서 계약형태나 근무지가 더 상세할 수 있으므로 덮어씀)
             job.update(detail_info)
         
-        # DB 컬럼 규격에 맞춰 정리
         final_jobs.append({
-            "job_id": job.get("job_id"),
+            "source": "kowork",
+            "source_job_id": job.get("job_id"),
             "url": job.get("url"),
             "title": job.get("title"),
             "company_name": job.get("company_name"),
@@ -261,9 +314,92 @@ def main():
             "benefits": job.get("benefits"),
         })
 
-    # Supabase 저장
     save_to_supabase(final_jobs)
-    print("🏁 스크랩 완료!")
+    print(f"🏁 스크랩 완료! (메인 페이지 모드: {len(final_jobs)}건)")
+
+
+def scrape_from_sitemap(limit: int, delay: float):
+    """사이트맵에서 전체 공고 URL을 가져와서 상세 페이지를 크롤링합니다."""
+    job_ids = fetch_sitemap_job_ids()
+    if not job_ids:
+        print("❌ 사이트맵에서 공고를 찾을 수 없습니다.")
+        return
+
+    # limit 적용
+    job_ids = job_ids[:limit]
+    print(f"\n📋 총 {len(job_ids)}건 상세 페이지 수집 시작 (딜레이: {delay}초)\n")
+
+    final_jobs = []
+
+    for idx, job_id in enumerate(job_ids):
+        url = f"{BASE_URL}/post/{job_id}"
+        print(f"  👉 [{idx+1}/{len(job_ids)}] 상세 정보 수집 중: {url}")
+
+        detail_html = fetch_page(url, delay=delay)
+        if not detail_html:
+            print(f"    ⚠️ 로드 실패 — 건너뜀")
+            continue
+
+        detail = parse_detail_page(detail_html)
+
+        final_jobs.append({
+            "source": "kowork",
+            "source_job_id": job_id,
+            "url": url,
+            "title": detail.get("title"),
+            "company_name": detail.get("company_name"),
+            "location": detail.get("location_detail"),
+            "employment_type": detail.get("employment_type"),
+            "visa_type": detail.get("visa_type"),
+            "deadline": detail.get("deadline"),
+            "logo_url": detail.get("logo_url"),
+            "tasks": detail.get("tasks"),
+            "requirements": detail.get("requirements"),
+            "preferred": detail.get("preferred"),
+            "visas_preferred": detail.get("visas_preferred"),
+            "benefits": detail.get("benefits"),
+        })
+
+        # 50건 단위로 중간 저장
+        if len(final_jobs) % 50 == 0:
+            save_to_supabase(final_jobs[-50:])
+
+    # 나머지 저장
+    remainder = len(final_jobs) % 50
+    if remainder > 0:
+        save_to_supabase(final_jobs[-remainder:])
+
+    print(f"\n🏁 스크랩 완료! (사이트맵 모드: {len(final_jobs)}건)")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Kowork 채용 공고 스크래퍼",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+사용 예시:
+  python scraper.py                         # 기존 방식: 메인 페이지 15건
+  python scraper.py --sitemap               # 사이트맵: 전체 공고 수집
+  python scraper.py --sitemap --limit 50    # 사이트맵: 최신 50건만
+  python scraper.py --sitemap --delay 2.0   # 딜레이 2초로 느리게
+        """,
+    )
+    parser.add_argument("--limit", type=int, default=None,
+                        help="스크랩할 최대 공고 개수 (기본: 메인페이지=15, 사이트맵=전체)")
+    parser.add_argument("--sitemap", action="store_true",
+                        help="사이트맵에서 전체 공고를 수집합니다 (기본: 메인 페이지만)")
+    parser.add_argument("--delay", type=float, default=1.5,
+                        help="요청 간 딜레이 초 (기본: 1.5)")
+    args = parser.parse_args()
+
+    print(f"🚀 Kowork 스크래퍼 시작: {datetime.now().isoformat()}")
+
+    if args.sitemap:
+        limit = args.limit or 9999
+        scrape_from_sitemap(limit=limit, delay=args.delay)
+    else:
+        limit = args.limit or 15
+        scrape_from_main_page(limit=limit)
 
 
 if __name__ == "__main__":
