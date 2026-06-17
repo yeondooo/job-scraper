@@ -245,10 +245,21 @@ def parse_detail_page(html: str) -> dict:
     if visa_pill:
         detail["visa_type"] = visa_pill.get_text(strip=True)
 
-    # 5. 로고 이미지 (회사 로고)
-    logo_el = soup.select_one("img[alt*='logo'], img[alt*='회사']")
-    if logo_el:
-        detail["logo_url"] = logo_el.get("src")
+    # 5. 회사 로고 및 회사명 추출 (posting-<id>-logo 이미지 기준)
+    company_logo_el = soup.select_one("img[alt^='posting-'][alt$='-logo']")
+    if company_logo_el:
+        detail["logo_url"] = company_logo_el.get("src")
+        p1 = company_logo_el.parent
+        p2 = p1.parent if p1 else None
+        if p2:
+            p_el = p2.find("p")
+            if p_el and p_el.get_text(strip=True):
+                detail["company_name"] = p_el.get_text(strip=True)
+    else:
+        # Fallback to old selector if company card is not found or structured differently
+        logo_el = soup.select_one("img[alt*='logo'], img[alt*='회사']")
+        if logo_el and logo_el.get("src") and "google_play_store_logo" not in logo_el.get("src") and "kowork-card-og" not in logo_el.get("src"):
+            detail["logo_url"] = logo_el.get("src")
 
     return detail
 

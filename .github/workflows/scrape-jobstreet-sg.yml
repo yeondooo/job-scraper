@@ -1,0 +1,43 @@
+name: Scrape JobStreet SG
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # 매일 21:00 KST (12:00 UTC)
+  workflow_dispatch:      # 수동 실행 및 입력 지원
+    inputs:
+      keyword:
+        description: '검색 키워드 (기본: software engineer)'
+        required: true
+        default: 'software engineer'
+      max_pages:
+        description: '수집할 최대 페이지 수 (기본 5페이지)'
+        required: true
+        default: '5'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sg.jobstreet.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.JASOSEOL_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
+        run: |
+          python scraper.py \
+            --keyword "${{ github.event.inputs.keyword || 'software engineer' }}" \
+            --max-pages ${{ github.event.inputs.max_pages || '5' }} \
+            --headless
