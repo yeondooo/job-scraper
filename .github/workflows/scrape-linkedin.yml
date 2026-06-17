@@ -1,25 +1,29 @@
-name: Scrape JobStreet SG
+name: Scrape LinkedIn
 
 on:
   schedule:
-    - cron: '0 12 * * *'  # 매일 21:00 KST (12:00 UTC)
+    - cron: '0 13 * * *'  # 매일 22:00 KST (13:00 UTC)
   workflow_dispatch:      # 수동 실행 및 입력 지원
     inputs:
       keyword:
         description: '검색 키워드 (기본: 전체 직업군 수집시 비워둠)'
         required: false
         default: ''
-      max_pages:
-        description: '수집할 최대 페이지 수 (기본 3페이지)'
+      location:
+        description: '지역 (기본: Singapore)'
         required: true
-        default: '3'
+        default: 'Singapore'
+      max_pages:
+        description: '수집할 최대 페이지 수 (기본 4페이지, 페이지당 25건)'
+        required: true
+        default: '4'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sg.jobstreet.com
+        working-directory: linkedin.com
 
     steps:
       - uses: actions/checkout@v4
@@ -39,5 +43,6 @@ jobs:
         run: |
           python scraper.py \
             --keyword "${{ github.event.inputs.keyword }}" \
-            --max-pages ${{ github.event.inputs.max_pages || '3' }} \
-            --headless
+            --location "${{ github.event.inputs.location || 'Singapore' }}" \
+            --max-pages ${{ github.event.inputs.max_pages || '4' }} \
+            --delay 3.0
