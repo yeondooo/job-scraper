@@ -248,7 +248,17 @@ def main():
             all_jobs.extend(jobs)
             time.sleep(args.delay)
             
-        print(f"\n📋 Found {len(all_jobs)} jobs. Scraping detail pages...")
+        # Deduplicate job list to avoid database upsert constraint violations
+        seen_ids = set()
+        deduped_jobs = []
+        for job in all_jobs:
+            jid = job["job_id"]
+            if jid not in seen_ids:
+                seen_ids.add(jid)
+                deduped_jobs.append(job)
+        all_jobs = deduped_jobs
+            
+        print(f"\n📋 Found {len(all_jobs)} jobs (deduplicated). Scraping detail pages...")
         
         # Phase 2: Scraping Detail Pages
         final_rows = []
