@@ -6,13 +6,13 @@ on:
   workflow_dispatch:      # 수동 실행 및 입력 지원
     inputs:
       keyword:
-        description: '검색 키워드 (기본: software engineer)'
-        required: true
-        default: 'software engineer'
+        description: '검색 키워드 (기본: 전체 직업군 수집시 비워둠)'
+        required: false
+        default: ''
       max_pages:
-        description: '수집할 최대 페이지 수 (기본 5페이지)'
+        description: '수집할 최대 페이지 수 (기본 10페이지)'
         required: true
-        default: '5'
+        default: '10'
 
 jobs:
   scrape:
@@ -38,6 +38,6 @@ jobs:
           SUPABASE_KEY: ${{ secrets.JASOSEOL_SUPABASE_KEY }}
         run: |
           python scraper.py \
-            --keyword "${{ github.event.inputs.keyword || 'software engineer' }}" \
-            --max-pages ${{ github.event.inputs.max_pages || '5' }} \
+            --keyword "${{ github.event.inputs.keyword }}" \
+            --max-pages ${{ github.event.inputs.max_pages || '10' }} \
             --headless

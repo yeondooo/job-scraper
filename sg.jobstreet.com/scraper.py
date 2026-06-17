@@ -204,8 +204,8 @@ def main():
         description="JobStreet Singapore (sg.jobstreet.com) Scraper",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("-q", "--keyword", type=str, default="software engineer",
-                        help="Search keyword (default: 'software engineer')")
+    parser.add_argument("-q", "--keyword", type=str, default=None,
+                        help="Search keyword (default: None, queries all jobs)")
     parser.add_argument("-p", "--max-pages", type=int, default=5,
                         help="Maximum pages to scrape (default: 5)")
     parser.add_argument("--headless", action="store_true", default=False,
@@ -218,7 +218,7 @@ def main():
     args = parser.parse_args()
     
     print("🚀 Starting JobStreet SG Scraper")
-    print(f"   Keyword: {args.keyword}")
+    print(f"   Keyword: {args.keyword if args.keyword else 'All (No Filter)'}")
     print(f"   Max Pages: {args.max_pages}")
     print(f"   Headless: {args.headless}")
     print(f"   No Supabase: {args.no_supabase}")
@@ -234,7 +234,10 @@ def main():
         
         # Phase 1: Scraping Search Results Pages
         for page in range(1, args.max_pages + 1):
-            url = f"{BASE_URL}/jobs?keywords={args.keyword.replace(' ', '+')}&page={page}"
+            if args.keyword:
+                url = f"{BASE_URL}/jobs?keywords={args.keyword.replace(' ', '+')}&page={page}&sortmode=ListedDate"
+            else:
+                url = f"{BASE_URL}/jobs?page={page}&sortmode=ListedDate"
             print(f"\n[Page {page}/{args.max_pages}] Fetching job list...")
             
             jobs = scrape_list_page(driver, url)
