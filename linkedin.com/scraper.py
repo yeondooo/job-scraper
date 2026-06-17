@@ -139,6 +139,8 @@ def parse_detail_page(html: str) -> dict:
                 detail["employment_type"] = val_text
             elif "industries" in header_text:
                 detail["industry"] = val_text
+            elif "seniority level" in header_text:
+                detail["career_level"] = val_text
                 
     return detail
 
@@ -197,7 +199,9 @@ def main():
         start = (page - 1) * 25
         params = {
             "location": args.location,
-            "start": start
+            "start": start,
+            "sortBy": "DD",
+            "f_TPR": "r2592000"  # Limit to past month (30 days)
         }
         if args.keyword:
             params["keywords"] = args.keyword
@@ -246,6 +250,7 @@ def main():
             "title": job["title"],
             "company_name": job.get("company_name"),
             "location": job.get("location"),
+            "career_level": job.get("career_level"),
             "date_range": job.get("date_range"),
             "tasks": job.get("tasks"),
             "employment_type": job.get("employment_type"),
@@ -258,6 +263,7 @@ def main():
             print(f"   Details parsed:")
             print(f"     Employment: {row['employment_type']}")
             print(f"     Industry: {row['industry']}")
+            print(f"     Seniority/Career: {row['career_level']}")
             print(f"     Description (first 100 chars): {row.get('tasks', '')[:100].replace(chr(10), ' ')}...")
             
     # Phase 3: Save to Supabase
